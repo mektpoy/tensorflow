@@ -147,11 +147,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
     Args:
       opt: The actual optimizer that will be used to compute and apply the
-        gradients. Must be one of the Optimizer classes.
+        gradients. Must be one of the Optimizer classes. 即实际的优化器
       replicas_to_aggregate: number of replicas to aggregate for each variable
-        update.
+        update.  实际运行的副本数(worker)
       total_num_replicas: Total number of tasks/workers/replicas, could be
-        different from replicas_to_aggregate.
+        different from replicas_to_aggregate.  总副本数，可以不等于实际运行的数量，多了的话作为备用，少了的话相当于计算有冗余。
         If total_num_replicas > replicas_to_aggregate: it is backup_replicas +
         replicas_to_aggregate.
         If total_num_replicas < replicas_to_aggregate: Replicas compute
@@ -190,6 +190,10 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # following format: (accumulator, device).
     self._accumulator_list = []
 
+"""
+  计算需要更新的梯度：
+    返回一个kv列表，表示variable需要更新gradient梯度，最后需要求平均。
+"""
   def compute_gradients(self, *args, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
 
@@ -207,6 +211,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       A list of (gradient, variable) pairs.
     """
     return self._opt.compute_gradients(*args, **kwargs)
+
+"""
+  更新梯度，实际上这里包含了分布式同步方法的实现，并wrap了真正优化器的 apply_gradients。
+  输入是上面那个函数的kv列表，以及更新的次数，函数的名字（默认为传递给构造函数的名字）
+  返回一个train_op，告诉replicas本次更新完成，并可以开始下一轮的更新了。
+"""
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
