@@ -191,7 +191,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
     TypeError if `cluster` is not a dictionary or `ClusterDef` protocol buffer,
     or if `ps_strategy` is provided but not a callable.
   """
-  print("lanjiao")
+  print("start replica_device_setter")
   if cluster is not None:
     if isinstance(cluster, server_lib.ClusterSpec):
       cluster_spec = cluster.as_dict()
@@ -221,4 +221,5 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
     raise TypeError("ps_strategy must be callable")
   chooser = _ReplicaDeviceChooser(
       ps_tasks, ps_device, worker_device, merge_devices, ps_ops, ps_strategy)
+  print("end replica_device_setter")
   return chooser.device_function
