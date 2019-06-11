@@ -32,6 +32,7 @@ py_library(
         "python/training/reg_adagrad_optimizer.py",
         "python/training/shampoo.py",
         "python/training/sign_decay.py",
+        "python/training/sync_replicas_with_combiner_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
         "python/training/weight_decay_optimizers.py",
     ],
@@ -306,6 +307,24 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "sync_replicas_with_combiner_optimizer_test",
+    srcs = ["python/training/sync_replicas_with_combiner_optimizer_test.py"],
+    additional_deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "sign_decay_test",
     srcs = ["python/training/sign_decay_test.py"],
@@ -421,3 +440,4 @@ py_test(
         "@six_archive//:six",
     ],
 )
+

@@ -121,6 +121,9 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # We have initial tokens in the queue so we can call this one by one. After
     # the first step, this will no longer work as there will be no more extra
     # tokens in the queue.
+    print("device = ", global_step.device)
+    print ("global_step = ", sessions[1].run(global_step))
+
     sessions[0].run(train_ops[0])
     sessions[1].run(train_ops[1])
 
@@ -129,6 +132,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     while sessions[1].run(global_step) != 1:
       time.sleep(0.01)
 
+    print ("global_step = ", sessions[1].run(global_step))
     self.assertAllClose(0 - (0.1 + 0.3) / 2 * 2.0, sessions[1].run(var_0_g_1))
     self.assertAllClose(1 - (0.9 + 1.1) / 2 * 2.0, sessions[1].run(var_1_g_1))
     self.assertAllClose([[3.0], [4.0 - (0.1 + 0.3) / 2 * 2.0]],
@@ -193,6 +197,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     var_1_g_1 = graphs[1].get_tensor_by_name("v1:0")
     local_step_1 = graphs[1].get_tensor_by_name("sync_rep_local_step:0")
     global_step = graphs[1].get_tensor_by_name("global_step:0")
+    print("device = ", global_step.device)
 
     # The steps should also be initilized.
     self.assertAllEqual(0, sessions[1].run(global_step))
@@ -201,6 +206,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # We have initial tokens in the queue so we can call this one by one. After
     # the token queue becomes empty, they should be called concurrently.
     # Here worker 0 and worker 2 finished first.
+    print ("global_step = ", sessions[1].run(global_step))
     sessions[0].run(train_ops[0])
     sessions[2].run(train_ops[2])
 
@@ -210,6 +216,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     while sessions[1].run(global_step) != 1:
       time.sleep(0.01)
 
+    print ("global_step = ", sessions[1].run(global_step))
     self.assertAllEqual(1, sessions[1].run(global_step))
     self.assertAllClose(0 - (0.1 + 0.5) / 2 * 2.0, sessions[1].run(var_0_g_1))
     self.assertAllClose(1 - (0.9 + 1.3) / 2 * 2.0, sessions[1].run(var_1_g_1))

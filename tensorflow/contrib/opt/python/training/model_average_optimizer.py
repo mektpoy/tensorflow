@@ -1,3 +1,4 @@
+# -- coding: utf-8 --
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -206,6 +207,7 @@ class ModelAverageOptimizer(optimizer.Optimizer):
         checked.
     """
 
+    # 利用base_opt更新local变量，同时每更新一次，local_step +=1
     # update local variables
     if not grads_and_vars:
       raise ValueError("Must supply at least one variable")
@@ -217,10 +219,13 @@ class ModelAverageOptimizer(optimizer.Optimizer):
       local_update = state_ops.assign_add(
           self._local_step, 1, name="local_step_update").op
 
+    # 到达特点步数之后，如何更新global_varibales
     # update global variables.
     def _update_global_variables():  # pylint: disable=missing-docstring
+      # 分别拿到local_vars和global_vars
       local_vars = [v for g, v in grads_and_vars if g is not None]
       global_vars = [self._local_2_global[v] for v in local_vars]
+      # 创建同步队列sync queue
       # sync queue
       with ops.colocate_with(global_step):
         sync_queue = data_flow_ops.FIFOQueue(
@@ -232,16 +237,19 @@ class ModelAverageOptimizer(optimizer.Optimizer):
           # pylint: disable=protected-access
           with ops.device(gvar.device):
             if isinstance(var._ref(), ops.Tensor):
+              # 参考SyncReplicaOptimizer，将每个worker的local_var放入accumulator  
               var_accum = data_flow_ops.ConditionalAccumulator(
                   var.dtype,
                   shape=var.get_shape(),
                   shared_name=gvar.name + "/var_accum")
               train_ops.append(
                   var_accum.apply_grad(var._ref(), local_step=global_step))
+              # 取出num_worker份local_var的平均值
               aggregated_vars.append(var_accum.take_grad(self._num_worker))
             else:
               raise ValueError("Unknown local variable type!")
             self._accumulator_list.append((var_accum, gvar.device))
+      # chief worker负责将local_var的平均值赋值给global_var，然后在同步队列中加入num_worker-1份数据
       # chief worker updates global vars and enqueues tokens to the sync queue
       if self._is_chief:
         update_ops = []
@@ -256,15 +264,17 @@ class ModelAverageOptimizer(optimizer.Optimizer):
           tokens = array_ops.fill([self._num_worker - 1],
                                   constant_op.constant(False))
           sync_op = sync_queue.enqueue_many(tokens)
+      # 其它worker的sync_op是从同步队列中取出一份token，当chief_worker没有完成global_var更新时，同步队列为空，因而其余worker只能等待，从而完成同步
       else:
         with ops.control_dependencies(train_ops), ops.device(
             global_step.device):
           sync_op = sync_queue.dequeue()
-
+      # 在完成global_var更新之后，所有worker将global_var赋值给local_var
       with ops.control_dependencies([sync_op]):
         local_update_op = self._local_vars_update(local_vars)
       return local_update_op
 
+    # 在完成local更新之后，做判断，是否达到了特定步数，如果是，则执行_update_global_variables，否则什么都不做，no_op,
     with ops.control_dependencies([local_update]):
       condition = math_ops.equal(
           math_ops.mod(self._local_step, self._interval_steps), 0)

@@ -1,3 +1,4 @@
+# -- coding: utf-8 --
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -232,6 +234,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         checked.
     """
     print("start function apply_gradients")
+    print(grads_and_vars)
+    print(global_step)
+    print(name)
     if not grads_and_vars:
       raise ValueError("Must supply at least one variable")
 
@@ -246,6 +251,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
       储存当前的步数
     """
+    # 强制放一份local_step在本地，作为时间戳。（主要是为了backup worker）
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
@@ -267,8 +273,10 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
       所有的var都会分布在ps上，ps可能是多个的，所以下面的操作绑定在每个var对应的device上，才能确保速度
     """ 
+    
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:
+        print ("var = ", var, "device = ", var.device)
         var_list.append(var)
         with ops.device(var.device):
           # Dense gradients.
@@ -293,6 +301,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             """
             aggregated_grad.append(grad_accum.take_grad(
                 self._replicas_to_aggregate))
+          
+          #这部分和上面的大体一致，区别在于是整块插入。
           else:
             if not isinstance(grad, ops.IndexedSlices):
               raise ValueError("Unknown grad type!")
@@ -305,24 +315,18 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           self._accumulator_list.append((grad_accum, var.device))
 
-      """
-        取出的梯度均值与变量重新组成grads_and_vars
-      """
+      # 取出的梯度均值与变量重新组成grads_and_vars
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
-      """
-        base_opt用梯度均值实际更新变量
-      """
+        # base_opt用梯度均值实际更新变量
         update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
                                               global_step)
-
       # Create token queue.
       with ops.device(global_step.device), ops.name_scope(""):
-      """
-        同步队列，放入global_step
-      """
+      
+        # 同步队列，放入global_step
         sync_token_queue = (
             data_flow_ops.FIFOQueue(-1,
                                     global_step.dtype.base_dtype,
@@ -347,9 +351,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           token = sync_token_queue.dequeue()
         train_op = state_ops.assign(self._local_step, token)
 
-      """
-        与update_op强依赖，利用队列强制base_opt做更新 
-      """
+        # 与update_op强依赖，利用队列强制base_opt做更新 
         with ops.control_dependencies([update_op]):
           # Sync_op needs to insert tokens to the token queue at the end of the
           # step so the replicas can fetch them to start the next step.
